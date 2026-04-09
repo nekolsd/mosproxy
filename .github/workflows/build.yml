@@ -1,0 +1,114 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build"
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  calculate_version:
+    name: Calculate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building version: ${VERSION} (tag: ${TAG})"
+
+  build_linux:
+    name: Build Linux binaries
+    runs-on: ubuntu-latest
+    needs: calculate_version
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64 }
+          - { arch: arm64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.calculate_version.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          check-latest: true
+          cache: false
+
+      - name: Build
+        run: |
+          set -xeuo pipefail
+          mkdir -p dist
+          go build -v -trimpath -o dist/mosproxy \
+            -ldflags "-X 'main.version=${{ needs.calculate_version.outputs.version }}' -s -w -buildid="
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+
+      - name: Archive
+        run: |
+          set -xeuo pipefail
+          DIR_NAME="mosproxy-${{ needs.calculate_version.outputs.version }}-linux-${{ matrix.arch }}"
+          cd dist
+          mkdir "${DIR_NAME}"
+          cp ../LICENSE "${DIR_NAME}/"
+          cp mosproxy "${DIR_NAME}/"
+          tar -czvf "${DIR_NAME}.tar.gz" "${DIR_NAME}"
+          rm -r "${DIR_NAME}" mosproxy
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-linux-${{ matrix.arch }}
+          path: dist/
+
+  upload:
+    name: Upload to release
+    if: ${{ !failure() }}
+    runs-on: ubuntu-latest
+    needs:
+      - calculate_version
+      - build_linux
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: binary-*
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la dist/
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.calculate_version.outputs.tag }}
+          name: ${{ needs.calculate_version.outputs.tag }}
+          files: dist/*

@@ -1,0 +1,9 @@
+FROM alpine
+ARG TARGETARCH
+LABEL maintainer="nekolsd <nekolsd@proton.me>"
+RUN apk add --no-cache ca-certificates \
+    && mkdir /etc/mosproxy
+COPY mosproxy-${TARGETARCH} /usr/bin/mosproxy
+WORKDIR /etc/mosproxy
+VOLUME /etc/mosproxy
+CMD ["mosproxy", "router", "-c", "config.yaml"]
