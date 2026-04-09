@@ -29,7 +29,7 @@ func (r *Router) appendCacheKey(b []byte, q *QueryCtx) []byte {
 		b = append(b, q.ECSZone...)
 	case q.ECS2Upstream.IsValid():
 		b = append(b, 2)
-		q.ECS2Upstream.Masked().AppendTo(b)
+		b = q.ECS2Upstream.Masked().AppendTo(b)
 	}
 	b[p] = byte(len(b) - p)
 	return b
