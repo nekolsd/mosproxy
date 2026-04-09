@@ -1,9 +1,3 @@
-github.com/IrineSistiana/bytespool v0.0.0-20240303022030-cfcf97e7141f h1:TZsSQY0BcyljTPIG5ieqA8YfoKX5PcM9vGZv/SQSlmE=
-github.com/IrineSistiana/bytespool v0.0.0-20240303022030-cfcf97e7141f/go.mod h1:XM+j7lLDZ/qgMcJF2oCKKx/lBDKpHcPjXMx0zlfRuiQ=
-github.com/IrineSistiana/connpool v0.0.0-20240326131245-897b52e59cfc h1:KKkb9fs5hSuKzoYUEhgoXerPQj0m8ImzRSSo00bv+s8=
-github.com/IrineSistiana/connpool v0.0.0-20240326131245-897b52e59cfc/go.mod h1:szSVGIuaqgseOjLONo35iIhzds198HGs5LmiXlkTvgs=
-github.com/IrineSistiana/gopool v0.0.0-20240118084800-c21759e56cf2 h1:suNY7yRYxCl9EnUFiGbHLMhnX/nDehP11lWiQpuCpiI=
-github.com/IrineSistiana/gopool v0.0.0-20240118084800-c21759e56cf2/go.mod h1:q4mYgimU8Zy8oQqurweXbWG3WDK9xoUhI5TGZa8S3So=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

@@ -5,9 +5,6 @@ go 1.24.0
 toolchain go1.25.0
 
 require (
-	github.com/IrineSistiana/bytespool v0.0.0-20240303022030-cfcf97e7141f
-	github.com/IrineSistiana/connpool v0.0.0-20240326131245-897b52e59cfc
-	github.com/IrineSistiana/gopool v0.0.0-20240118084800-c21759e56cf2
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/klauspost/compress v1.18.2

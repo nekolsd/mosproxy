@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/IrineSistiana/connpool"
+	"github.com/IrineSistiana/mosproxy/internal/connpool"
 	"github.com/IrineSistiana/mosproxy/pkg/dnsmsg"
 	"github.com/rs/zerolog"
 )

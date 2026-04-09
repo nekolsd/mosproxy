@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IrineSistiana/connpool"
+	"github.com/IrineSistiana/mosproxy/internal/connpool"
 	"github.com/IrineSistiana/mosproxy/internal/dnsutils"
 	"github.com/IrineSistiana/mosproxy/internal/pool"
 	"github.com/IrineSistiana/mosproxy/pkg/dnsmsg"

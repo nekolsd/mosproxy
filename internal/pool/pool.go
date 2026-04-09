@@ -6,23 +6,20 @@ import (
 	"fmt"
 	"io"
 	"sync"
-
-	"github.com/IrineSistiana/bytespool"
-	"github.com/IrineSistiana/gopool"
 )
 
 func Go(fn func()) {
-	gopool.Go(fn)
+	go fn()
 }
 
 type Buffer []byte
 
 func GetBuf(size int) Buffer {
-	return bytespool.Get(size)
+	return getBuf(size)
 }
 
 func ReleaseBuf(b Buffer) {
-	bytespool.Release(b)
+	releaseBuf(b)
 }
 
 func CopyBuf(b []byte) Buffer {
