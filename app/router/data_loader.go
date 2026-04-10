@@ -25,13 +25,13 @@ type DataProvider[V any] interface {
 	V() *V
 }
 
-// Funcs of fileLoader are not concurrent safe.
-// Except V().
-type fileLoader[V any] struct {
+// FileLoader loads and hot-reloads a single file.
+// Funcs of FileLoader are not concurrent safe, except V().
+type FileLoader[V any] struct {
 	fp      string
 	parseFn func(b []byte) (*V, error)
 	logger  *zerolog.Logger
-	vInfo   func(e *zerolog.Event, v *V) // print log fields when v is loaded, DO NOT call e.Msg().
+	vInfo   func(e *zerolog.Event, v *V)
 
 	hash       [sha256.Size]byte
 	v          atomic.Pointer[V]
@@ -39,7 +39,21 @@ type fileLoader[V any] struct {
 	staged     *V
 }
 
-func (s *fileLoader[V]) LoadAndStage() (ok bool) {
+func NewFileLoader[V any](
+	fp string,
+	parseFn func(b []byte) (*V, error),
+	logger *zerolog.Logger,
+	vInfo func(e *zerolog.Event, v *V),
+) *FileLoader[V] {
+	return &FileLoader[V]{
+		fp:      fp,
+		parseFn: parseFn,
+		logger:  logger,
+		vInfo:   vInfo,
+	}
+}
+
+func (s *FileLoader[V]) LoadAndStage() (ok bool) {
 	b, err := os.ReadFile(s.fp)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("failed to read file")
@@ -66,7 +80,7 @@ func (s *fileLoader[V]) LoadAndStage() (ok bool) {
 	return err == nil
 }
 
-func (s *fileLoader[V]) init() (*V, error) {
+func (s *FileLoader[V]) Init() (*V, error) {
 	b, err := os.ReadFile(s.fp)
 	if err != nil {
 		return nil, err
@@ -81,7 +95,7 @@ func (s *fileLoader[V]) init() (*V, error) {
 	return v, nil
 }
 
-func (s *fileLoader[V]) Commit() {
+func (s *FileLoader[V]) Commit() {
 	if s.staged != nil {
 		s.v.Store(s.staged)
 		s.hash = s.stagedHash
@@ -90,18 +104,18 @@ func (s *fileLoader[V]) Commit() {
 	}
 }
 
-func (s *fileLoader[V]) Discard() {
+func (s *FileLoader[V]) Discard() {
 	s.staged = nil
 	clear(s.hash[:])
 }
 
-func (s *fileLoader[V]) V() *V {
+func (s *FileLoader[V]) V() *V {
 	return s.v.Load()
 }
 
-type fileLoaderGroup[V any] []*fileLoader[V]
+type FileLoaderGroup[V any] []*FileLoader[V]
 
-func (g fileLoaderGroup[V]) LoadAndStage() bool {
+func (g FileLoaderGroup[V]) LoadAndStage() bool {
 	for _, loader := range g {
 		ok := loader.LoadAndStage()
 		if !ok {
@@ -111,13 +125,13 @@ func (g fileLoaderGroup[V]) LoadAndStage() bool {
 	return true
 }
 
-func (g fileLoaderGroup[V]) Commit() {
+func (g FileLoaderGroup[V]) Commit() {
 	for _, loader := range g {
 		loader.Commit()
 	}
 }
 
-func (g fileLoaderGroup[V]) Discard() {
+func (g FileLoaderGroup[V]) Discard() {
 	for _, loader := range g {
 		loader.Discard()
 	}

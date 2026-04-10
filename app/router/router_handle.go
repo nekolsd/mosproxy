@@ -67,54 +67,60 @@ var cacheKeyPool = pool.NewBytesPool()
 
 // router main handle func.
 func (r *Router) BuiltInHandler(ctx context.Context, q *QueryCtx) {
-	// Match rules
-	var matchedRule *rule
-	for _, rule := range r.rules {
-		if rule.match(q) {
-			matchedRule = rule
-			break
-		}
-	}
-
-	if matchedRule == nil {
-		SetEmptyRespMQ(q, dnsmsg.RCodeRefused)
-		return
-	}
-	if rejectRCode := matchedRule.cfg.Reject; rejectRCode > 0 {
-		SetEmptyRespMQ(q, dnsmsg.RCode(rejectRCode))
-		return
-	}
-	upstream := matchedRule.upstream
-	if upstream == nil {
-		SetEmptyRespMQ(q, dnsmsg.RCodeRefused)
-		return
-	}
-
-	// lookup cache
 	ckb := cacheKeyPool.Get()
 	defer cacheKeyPool.Release(ckb)
-	ckb.B = r.appendCacheKey(ckb.B, q)
-	resp, t := r.cache.Get(ctx, ckb.B)
-	if resp != nil {
-		if r.needPrefetch(t) {
-			r.AsyncSingleFlightPrefetch(ckb.B, q, upstream)
+
+	for _, rule := range r.rules {
+		if !rule.match(q) {
+			continue
 		}
-		r.queryCacheHitTotal.Inc()
-		q.SetRespFrom(resp, "cache")
+		if rejectRCode := rule.cfg.Reject; rejectRCode > 0 {
+			SetEmptyRespMQ(q, dnsmsg.RCode(rejectRCode))
+			return
+		}
+		upstream := rule.upstream
+		if upstream == nil {
+			SetEmptyRespMQ(q, dnsmsg.RCodeRefused)
+			return
+		}
+
+		ckb.B = ckb.B[:0]
+		ckb.B = r.appendCacheKey(ckb.B, q)
+		resp, t := r.cache.Get(ctx, ckb.B)
+		if resp != nil {
+			if rule.respIpSet != nil && rule.respIpSet.MatchMsg(resp) {
+				dnsmsg.ReleaseMsg(resp)
+				continue
+			}
+			if r.needPrefetch(t) {
+				r.AsyncSingleFlightPrefetch(ckb.B, q, upstream)
+			}
+			r.queryCacheHitTotal.Inc()
+			q.SetRespFrom(resp, "cache")
+			return
+		}
+
+		if ctxDone(ctx) {
+			SetEmptyRespMQ(q, dnsmsg.RCodeServerFailure)
+			return
+		}
+
+		err := r.forward(ctx, q, upstream)
+		if err != nil {
+			SetEmptyRespMQ(q, dnsmsg.RCodeServerFailure)
+			return
+		}
+
+		if rule.respIpSet != nil && rule.respIpSet.MatchMsg(q.Resp()) {
+			q.SetResp(nil)
+			continue
+		}
+
+		r.cache.Store(ckb.B, q.Resp())
 		return
 	}
 
-	if ctxDone(ctx) { // check if redis server timed out
-		SetEmptyRespMQ(q, dnsmsg.RCodeServerFailure)
-		return
-	}
-
-	err := r.forward(ctx, q, upstream)
-	if err != nil {
-		SetEmptyRespMQ(q, dnsmsg.RCodeServerFailure)
-		return
-	}
-	r.cache.Store(ckb.B, q.Resp())
+	SetEmptyRespMQ(q, dnsmsg.RCodeRefused)
 }
 
 // Prefetching q in other goroutine.

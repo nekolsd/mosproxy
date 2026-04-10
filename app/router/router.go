@@ -125,6 +125,7 @@ type Router struct {
 	upstreams        map[string]*UpstreamWrapper // not nil
 	loadBalancers    map[string]*LoadBalancer    // not nil
 	domainSets       map[string]*DomainSet       // not nil
+	ipSets           map[string]*IpSet           // not nil
 	rules            []*rule
 	middlewares      []Middleware // nil if no middleware
 	serverClosers    []func()
@@ -153,6 +154,7 @@ func Run(cfg *Config) (_ *Router, err error) {
 		upstreams:           make(map[string]*UpstreamWrapper),
 		loadBalancers:       make(map[string]*LoadBalancer),
 		domainSets:          make(map[string]*DomainSet),
+		ipSets:              make(map[string]*IpSet),
 		middlewareReloaders: make(map[Dataloader]struct{}),
 
 		queryTotal: prometheus.NewCounter(prometheus.CounterOpts{
@@ -231,6 +233,14 @@ func Run(cfg *Config) (_ *Router, err error) {
 		err := r.loadDomainSet(&domainSet)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init domain set #%d, %w", i, err)
+		}
+	}
+
+	// init ip sets
+	for i, ipSetCfg := range cfg.IpSets {
+		err := r.loadIpSet(&ipSetCfg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to init ip set #%d, %w", i, err)
 		}
 	}
 
@@ -369,6 +379,11 @@ func (r *Router) GetLoadBalancer(tag string) *LoadBalancer {
 // Nil if not configured.
 func (r *Router) GetDomainSet(tag string) *DomainSet {
 	return r.domainSets[tag]
+}
+
+// Nil if not configured.
+func (r *Router) GetIpSet(tag string) *IpSet {
+	return r.ipSets[tag]
 }
 
 func (r *Router) GetCache() *CacheCtl {

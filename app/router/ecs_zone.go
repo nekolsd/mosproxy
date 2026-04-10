@@ -16,31 +16,26 @@ func (r *Router) loadEcsZone(fps []string) error {
 	vInfo := func(e *zerolog.Event, v *ipmarker.IpMarker) {
 		e.Int("ip_len", v.IpLen()).Int("zone_len", v.MarkLen())
 	}
-	s := make([]*fileLoader[ipmarker.IpMarker], 0)
+	s := make(FileLoaderGroup[ipmarker.IpMarker], 0)
 	for _, fp := range fps {
 		logger := r.logger.With().Str("ecs_zone", fp).Logger()
-		loader := &fileLoader[ipmarker.IpMarker]{
-			fp:      fp,
-			parseFn: parseFn,
-			logger:  &logger,
-			vInfo:   vInfo,
-		}
-		_, err := loader.init()
+		loader := NewFileLoader(fp, parseFn, &logger, vInfo)
+		_, err := loader.Init()
 		if err != nil {
 			return fmt.Errorf("failed to load ecs zone from file %s, %w", fp, err)
 		}
 		s = append(s, loader)
 	}
-	r.ecsZone = &ECSZone{fileLoaderGroup: s}
+	r.ecsZone = &ECSZone{FileLoaderGroup: s}
 	return nil
 }
 
 type ECSZone struct {
-	fileLoaderGroup[ipmarker.IpMarker]
+	FileLoaderGroup[ipmarker.IpMarker]
 }
 
 func (z *ECSZone) Mark(addr netip.Addr) (string, bool) {
-	for _, loader := range z.fileLoaderGroup {
+	for _, loader := range z.FileLoaderGroup {
 		s, ok := loader.V().Mark(addr)
 		if ok {
 			return s, true
@@ -50,11 +45,11 @@ func (z *ECSZone) Mark(addr netip.Addr) (string, bool) {
 }
 
 type ECSZoneOverWrite struct {
-	fileLoaderGroup[map[string]netip.Prefix]
+	FileLoaderGroup[map[string]netip.Prefix]
 }
 
 func (g *ECSZoneOverWrite) Get(z string) (netip.Prefix, bool) {
-	for _, loader := range g.fileLoaderGroup {
+	for _, loader := range g.FileLoaderGroup {
 		m := loader.V()
 		if m != nil {
 			p, ok := (*m)[z]
@@ -77,21 +72,16 @@ func (r *Router) loadEcsZoneOverwrite(fps []string) error {
 	vInfo := func(e *zerolog.Event, v *map[string]netip.Prefix) {
 		e.Int("len", len(*v))
 	}
-	s := make([]*fileLoader[map[string]netip.Prefix], 0)
+	s := make(FileLoaderGroup[map[string]netip.Prefix], 0)
 	for _, fp := range fps {
 		logger := r.logger.With().Str("ecs_zone_overwrite", fp).Logger()
-		loader := &fileLoader[map[string]netip.Prefix]{
-			fp:      fp,
-			parseFn: parseFn,
-			logger:  &logger,
-			vInfo:   vInfo,
-		}
-		_, err := loader.init()
+		loader := NewFileLoader(fp, parseFn, &logger, vInfo)
+		_, err := loader.Init()
 		if err != nil {
 			return fmt.Errorf("failed to load ecs zone overwrite from file %s, %w", fp, err)
 		}
 		s = append(s, loader)
 	}
-	r.ecsZoneOverwrite = &ECSZoneOverWrite{fileLoaderGroup: s}
+	r.ecsZoneOverwrite = &ECSZoneOverWrite{FileLoaderGroup: s}
 	return nil
 }

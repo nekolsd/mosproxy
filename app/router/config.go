@@ -15,6 +15,7 @@ type Config struct {
 	LoadBalancers []LoadBalancerConfig `yaml:"load_balancers"`
 
 	DomainSets []DomainSetConfig `yaml:"domain_sets"`
+	IpSets     []IpSetConfig     `yaml:"ip_sets"`
 	Rules      []RuleConfig      `yaml:"rules"`
 
 	Addons AddonsConfig `yaml:"addons"`
@@ -112,6 +113,11 @@ type DomainSetConfig struct {
 	Files []string `yaml:"files"`
 }
 
+type IpSetConfig struct {
+	Tag   string   `yaml:"tag"`
+	Files []string `yaml:"files"`
+}
+
 type RuleConfig struct {
 	Reverse    bool     `yaml:"reverse"`
 	Domain     string   `yaml:"domain"`
@@ -121,6 +127,7 @@ type RuleConfig struct {
 	ClientIP   []string `yaml:"client_ip"`
 	Reject     uint16   `yaml:"reject"`
 	Forward    string   `yaml:"forward"`
+	RespIP     string   `yaml:"resp_ip"`
 }
 
 type AddonsConfig struct{}

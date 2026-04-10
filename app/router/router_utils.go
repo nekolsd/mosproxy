@@ -13,7 +13,6 @@ func SetEmptyRespMQ(q *QueryCtx, rcode dnsmsg.RCode) {
 	q.SetResp(resp)
 }
 
-// append cache key for this query to b.
 func (r *Router) appendCacheKey(b []byte, q *QueryCtx) []byte {
 	qName := q.Question.Name.Data()
 	b = append(b, byte(len(qName)))

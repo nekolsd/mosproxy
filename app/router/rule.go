@@ -13,6 +13,7 @@ type rule struct {
 	domainSet *DomainSet              // maybe nil
 	clientIp  *netlist.List[struct{}] // maybe nil
 	upstream  Upstream                // maybe nil
+	respIpSet *IpSet                  // maybe nil
 }
 
 func (r *Router) loadRule(cfg RuleConfig) (*rule, error) {
@@ -39,6 +40,14 @@ func (r *Router) loadRule(cfg RuleConfig) (*rule, error) {
 				return nil, fmt.Errorf("unknown forward target [%s]", cfg.Forward)
 			}
 		}
+	}
+
+	if len(cfg.RespIP) > 0 {
+		ipSet := r.ipSets[cfg.RespIP]
+		if ipSet == nil {
+			return nil, fmt.Errorf("cannot find ip set tag [%s]", cfg.RespIP)
+		}
+		ru.respIpSet = ipSet
 	}
 
 	// Copied from https://github.com/go4org/netipx/blob/fdeea329fbbac19fb83c9cfda32c4fcac39bbaab/netipx.go#L188

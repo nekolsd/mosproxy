@@ -33,31 +33,26 @@ func (r *Router) loadDomainSet(cfg *DomainSetConfig) error {
 	vInfo := func(e *zerolog.Event, v *domainmatcher.Matcher) {
 		e.Int("rule_num", v.Len())
 	}
-	s := make([]*fileLoader[domainmatcher.Matcher], 0)
+	s := make(FileLoaderGroup[domainmatcher.Matcher], 0)
 	for _, fp := range cfg.Files {
 		logger := r.logger.With().Str("domain_set", cfg.Tag).Str("file", fp).Logger()
-		loader := &fileLoader[domainmatcher.Matcher]{
-			fp:      fp,
-			parseFn: parseFn,
-			logger:  &logger,
-			vInfo:   vInfo,
-		}
-		_, err := loader.init()
+		loader := NewFileLoader(fp, parseFn, &logger, vInfo)
+		_, err := loader.Init()
 		if err != nil {
 			return fmt.Errorf("failed to load domain set from file %s, %w", fp, err)
 		}
 		s = append(s, loader)
 	}
-	r.domainSets[cfg.Tag] = &DomainSet{fileLoaderGroup: s}
+	r.domainSets[cfg.Tag] = &DomainSet{FileLoaderGroup: s}
 	return nil
 }
 
 type DomainSet struct {
-	fileLoaderGroup[domainmatcher.Matcher]
+	FileLoaderGroup[domainmatcher.Matcher]
 }
 
 func (g *DomainSet) Match(name dnsmsg.Name) bool {
-	for _, loader := range g.fileLoaderGroup {
+	for _, loader := range g.FileLoaderGroup {
 		ok := loader.V().Match(name)
 		if ok {
 			return true
