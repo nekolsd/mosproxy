@@ -88,6 +88,7 @@ func (q *QueryCtx) Reset() {
 	q.Prefetch = false
 	q.Question.Reset()
 	q.ClientECS = netip.Prefix{}
+	q.ServerTag = ""
 	q.Protocol = ProtoUnKnown
 	q.RemoteAddr = netip.AddrPort{}
 	zero(&q.ServerName)
@@ -112,7 +113,9 @@ func (q *QueryCtx) Copy() *QueryCtx {
 
 	n.Question.CopyFrom(&q.Question)
 	n.ClientECS = q.ClientECS
+	n.ServerTag = q.ServerTag
 	n.Protocol = q.Protocol
+	n.RemoteAddr = q.RemoteAddr
 	n.ServerName = append(n.ServerName, q.ServerName...)
 	n.Host = append(n.Host, q.Host...)
 	n.Path = append(n.Path, q.Path...)

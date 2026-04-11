@@ -85,7 +85,7 @@ func (r *Router) BuiltInHandler(ctx context.Context, q *QueryCtx) {
 		}
 
 		ckb.B = ckb.B[:0]
-		ckb.B = r.appendCacheKey(ckb.B, q)
+		ckb.B = r.appendCacheKey(ckb.B, q, rule.cfg.Forward)
 		resp, t := r.cache.Get(ctx, ckb.B)
 		if resp != nil {
 			if rule.respIpSet != nil && rule.respIpSet.MatchMsg(resp) {
@@ -93,7 +93,7 @@ func (r *Router) BuiltInHandler(ctx context.Context, q *QueryCtx) {
 				continue
 			}
 			if r.needPrefetch(t) {
-				r.AsyncSingleFlightPrefetch(ckb.B, q, upstream)
+				r.AsyncSingleFlightPrefetch(ckb.B, q, upstream, rule.respIpSet)
 			}
 			r.queryCacheHitTotal.Inc()
 			q.SetRespFrom(resp, "cache")
@@ -125,7 +125,7 @@ func (r *Router) BuiltInHandler(ctx context.Context, q *QueryCtx) {
 
 // Prefetching q in other goroutine.
 // If a query with same key is currently prefetching, do nothing.
-func (r *Router) AsyncSingleFlightPrefetch(key []byte, q *QueryCtx, u Upstream) {
+func (r *Router) AsyncSingleFlightPrefetch(key []byte, q *QueryCtx, u Upstream, respIpSet *IpSet) {
 	if len(key) == 0 {
 		return
 	}
@@ -136,12 +136,15 @@ func (r *Router) AsyncSingleFlightPrefetch(key []byte, q *QueryCtx, u Upstream) 
 	qCopy := q.Copy()
 	go func() {
 		defer ReleaseQueryCtx(qCopy)
-		r.DoPrefetch(utils.Str2BytesUnsafe(sk), qCopy, u)
+		defer r.prefetchSf.Done(sk)
+		r.DoPrefetch(utils.Str2BytesUnsafe(sk), qCopy, u, respIpSet)
 	}()
 }
 
 // Send q to u, and save response under key.
-func (r *Router) DoPrefetch(key []byte, q *QueryCtx, u Upstream) {
+// If respIpSet is non-nil and the response matches, the result is discarded
+// instead of being stored in cache.
+func (r *Router) DoPrefetch(key []byte, q *QueryCtx, u Upstream, respIpSet *IpSet) {
 	if len(key) == 0 {
 		return
 	}
@@ -151,6 +154,9 @@ func (r *Router) DoPrefetch(key []byte, q *QueryCtx, u Upstream) {
 	defer cancel()
 	err := r.forward(ctx, q, u)
 	if err != nil {
+		return
+	}
+	if respIpSet != nil && respIpSet.MatchMsg(q.Resp()) {
 		return
 	}
 	r.prefetchTotal.Inc()

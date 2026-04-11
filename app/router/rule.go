@@ -50,29 +50,6 @@ func (r *Router) loadRule(cfg RuleConfig) (*rule, error) {
 		ru.respIpSet = ipSet
 	}
 
-	// Copied from https://github.com/go4org/netipx/blob/fdeea329fbbac19fb83c9cfda32c4fcac39bbaab/netipx.go#L188
-	lastIp := func(p netip.Prefix) netip.Addr {
-		if !p.IsValid() {
-			return netip.Addr{}
-		}
-		a16 := p.Addr().As16()
-		var off uint8
-		var bits uint8 = 128
-		if p.Addr().Is4() {
-			off = 12
-			bits = 32
-		}
-		for b := uint8(p.Bits()); b < bits; b++ {
-			byteNum, bitInByte := b/8, 7-(b%8)
-			a16[off+byteNum] |= 1 << uint(bitInByte)
-		}
-		if p.Addr().Is4() {
-			return netip.AddrFrom16(a16).Unmap()
-		} else {
-			return netip.AddrFrom16(a16) // doesn't unmap
-		}
-	}
-
 	if len(cfg.ClientIP) > 0 {
 		lb := netlist.NewBuilder[struct{}](0)
 		for _, s := range cfg.ClientIP {
@@ -96,7 +73,7 @@ func (r *Router) loadRule(cfg RuleConfig) (*rule, error) {
 					return nil, fmt.Errorf("invalid cidr addr [%s], %w", s, err)
 				}
 				start = p.Masked().Addr()
-				end = lastIp(p)
+				end = lastIP(p)
 			} else { // single ip
 				addr, err := netip.ParseAddr(s)
 				if err != nil {
@@ -146,15 +123,24 @@ func (ru *rule) _match(q *QueryCtx) bool {
 	}
 
 	if p := ru.cfg.Path; len(p) > 0 {
-		if strings.HasSuffix(p, "/") { // match url prefix
-			ok := len(q.Path) >= len(q.Path) && string(q.Path[0:len(p)]) == p
-			if !ok {
+		if strings.HasSuffix(p, "/") {
+			if len(q.Path) < len(p) || string(q.Path[0:len(p)]) != p {
 				return false
 			}
 		} else {
 			if p != string(q.Path) {
 				return false
 			}
+		}
+	}
+
+	if ru.clientIp != nil {
+		if !q.RemoteAddr.IsValid() {
+			return false
+		}
+		_, ok := ru.clientIp.LookupAddr(q.RemoteAddr.Addr().Unmap())
+		if !ok {
+			return false
 		}
 	}
 	return true

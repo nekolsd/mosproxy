@@ -100,13 +100,13 @@ func (s *FileLoader[V]) Commit() {
 		s.v.Store(s.staged)
 		s.hash = s.stagedHash
 		s.staged = nil
-		clear(s.hash[:])
+		clear(s.stagedHash[:])
 	}
 }
 
 func (s *FileLoader[V]) Discard() {
 	s.staged = nil
-	clear(s.hash[:])
+	clear(s.stagedHash[:])
 }
 
 func (s *FileLoader[V]) V() *V {

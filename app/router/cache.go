@@ -67,7 +67,7 @@ func (r *Router) needPrefetch(t cache.Times) bool {
 
 	initTtl := t.ExpireAtUnix - t.StoredAtUnix
 	remainTtl := t.ExpireAtUnix - time.Now().Unix() // Note: maybe negative
-	prefetchThresholdTtl := int64(r.opt.Cache.PrefetchThreshold * float32(initTtl))
+	prefetchThresholdTtl := int64(prefetchThresholdRatio * float32(initTtl))
 	return remainTtl < prefetchThresholdTtl
 }
 

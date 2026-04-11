@@ -153,7 +153,6 @@ func (p *Pool) Get(ctx context.Context) (_ Conn, newConn bool, err error) {
 	// Try pick a busy conn from pool.
 	conn := p.pickBusyConnLocked()
 	if conn != nil {
-		conn.Reserve()
 		p.m.Unlock()
 		return conn, false, nil
 	}
@@ -210,15 +209,13 @@ func (p *Pool) Get(ctx context.Context) (_ Conn, newConn bool, err error) {
 
 // Release conn to pool.
 func (p *Pool) Release(conn Conn) {
-	closed := conn.Status().Closed
-
 	p.m.Lock()
 	sc, ok := p.busyConns[conn]
 	if !ok {
 		p.m.Unlock()
 		return
 	}
-	if closed {
+	if conn.Status().Closed {
 		delete(p.busyConns, conn)
 		p.m.Unlock()
 		return
@@ -237,7 +234,6 @@ func (p *Pool) Release(conn Conn) {
 		if rm > 0 {
 			closingConns = make([]Conn, 0, rm)
 			for idleConn := range p.idleConns {
-				// FIX: skip the just-returned conn to avoid closing it immediately.
 				if idleConn == conn {
 					continue
 				}
@@ -247,6 +243,10 @@ func (p *Pool) Release(conn Conn) {
 				if rm <= 0 {
 					break
 				}
+			}
+			if rm > 0 {
+				delete(p.idleConns, conn)
+				closingConns = append(closingConns, conn)
 			}
 		}
 		p.m.Unlock()
@@ -258,12 +258,13 @@ func (p *Pool) Release(conn Conn) {
 	p.m.Unlock()
 }
 
-// Remove conn from pool immediately.
+// Remove conn from pool immediately and close it.
 func (p *Pool) MarkDead(conn Conn) {
 	p.m.Lock()
-	defer p.m.Unlock()
 	delete(p.idleConns, conn)
 	delete(p.busyConns, conn)
+	p.m.Unlock()
+	conn.Close()
 }
 
 func (p *Pool) pickBusyConnLocked() Conn {
@@ -296,6 +297,7 @@ func (p *Pool) pickBusyConnLocked() Conn {
 	}
 	if pickedConn != nil {
 		pickedSc.curStream++
+		pickedConn.Reserve()
 	}
 	return pickedConn
 }
@@ -304,19 +306,25 @@ func (p *Pool) pickBusyConnLocked() Conn {
 // Always returns nil.
 func (p *Pool) Close() error {
 	p.m.Lock()
-	defer p.m.Unlock()
 
 	if p.closed {
+		p.m.Unlock()
 		return nil
 	}
 	p.closed = true
 	for dc := range p.dialingCalls {
 		dc.cancelDial(ErrPoolClosed)
 	}
+	closingConns := make([]Conn, 0, len(p.busyConns)+len(p.idleConns))
 	for conn := range p.busyConns {
-		conn.Close()
+		closingConns = append(closingConns, conn)
 	}
 	for conn := range p.idleConns {
+		closingConns = append(closingConns, conn)
+	}
+	p.m.Unlock()
+
+	for _, conn := range closingConns {
 		conn.Close()
 	}
 	return nil
@@ -350,6 +358,11 @@ func (dc *dialingCall) dial() {
 	defer dc.cancel()
 
 	c, err := p.opts.Dial(dc.ctx)
+
+	if err != nil && c != nil {
+		c.Close()
+		c = nil
+	}
 
 	p.m.Lock()
 	dc.m.Lock()

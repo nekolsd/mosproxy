@@ -13,7 +13,7 @@ func SetEmptyRespMQ(q *QueryCtx, rcode dnsmsg.RCode) {
 	q.SetResp(resp)
 }
 
-func (r *Router) appendCacheKey(b []byte, q *QueryCtx) []byte {
+func (r *Router) appendCacheKey(b []byte, q *QueryCtx, forwardTag string) []byte {
 	qName := q.Question.Name.Data()
 	b = append(b, byte(len(qName)))
 	b = append(b, qName...)
@@ -31,5 +31,10 @@ func (r *Router) appendCacheKey(b []byte, q *QueryCtx) []byte {
 		b = q.ECS2Upstream.Masked().AppendTo(b)
 	}
 	b[p] = byte(len(b) - p)
+
+	if len(forwardTag) > 0 {
+		b = binary.BigEndian.AppendUint16(b, uint16(len(forwardTag)))
+		b = append(b, forwardTag...)
+	}
 	return b
 }
