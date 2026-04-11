@@ -126,8 +126,9 @@ type RuleConfig struct {
 	Path       string   `yaml:"path"`
 	ClientIP   []string `yaml:"client_ip"`
 	Reject     uint16   `yaml:"reject"`
-	Forward    string   `yaml:"forward"`
-	RespIP     string   `yaml:"resp_ip"`
+	Forward       string   `yaml:"forward"`
+	RespIP        string   `yaml:"resp_ip"`
+	RespIPForward string   `yaml:"resp_ip_forward"`
 }
 
 type AddonsConfig struct{}

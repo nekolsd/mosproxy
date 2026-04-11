@@ -90,10 +90,14 @@ func (r *Router) BuiltInHandler(ctx context.Context, q *QueryCtx) {
 		if resp != nil {
 			if rule.respIpSet != nil && rule.respIpSet.MatchMsg(resp) {
 				dnsmsg.ReleaseMsg(resp)
+				if rule.respIpUpstream != nil {
+					r.handleRespIpFallback(ctx, ckb, q, rule)
+					return
+				}
 				continue
 			}
 			if r.needPrefetch(t) {
-				r.AsyncSingleFlightPrefetch(ckb.B, q, upstream, rule.respIpSet)
+				r.AsyncSingleFlightPrefetch(ckb.B, q, upstream, rule)
 			}
 			r.queryCacheHitTotal.Inc()
 			q.SetRespFrom(resp, "cache")
@@ -112,7 +116,12 @@ func (r *Router) BuiltInHandler(ctx context.Context, q *QueryCtx) {
 		}
 
 		if rule.respIpSet != nil && rule.respIpSet.MatchMsg(q.Resp()) {
+			r.cache.Store(ckb.B, q.Resp())
 			q.SetResp(nil)
+			if rule.respIpUpstream != nil {
+				r.handleRespIpFallback(ctx, ckb, q, rule)
+				return
+			}
 			continue
 		}
 
@@ -123,9 +132,38 @@ func (r *Router) BuiltInHandler(ctx context.Context, q *QueryCtx) {
 	SetEmptyRespMQ(q, dnsmsg.RCodeRefused)
 }
 
+// handleRespIpFallback handles the case where resp_ip matched and a fallback
+// upstream (resp_ip_forward) is configured. It queries the fallback upstream
+// (with its own cache key) and stores the result.
+func (r *Router) handleRespIpFallback(ctx context.Context, ckb *pool.Bytes, q *QueryCtx, rule *rule) {
+	ckb.B = ckb.B[:0]
+	ckb.B = r.appendCacheKey(ckb.B, q, rule.cfg.RespIPForward)
+	resp, t := r.cache.Get(ctx, ckb.B)
+	if resp != nil {
+		if r.needPrefetch(t) {
+			r.AsyncSingleFlightPrefetch(ckb.B, q, rule.respIpUpstream, nil)
+		}
+		r.queryCacheHitTotal.Inc()
+		q.SetRespFrom(resp, "cache")
+		return
+	}
+
+	if ctxDone(ctx) {
+		SetEmptyRespMQ(q, dnsmsg.RCodeServerFailure)
+		return
+	}
+
+	err := r.forward(ctx, q, rule.respIpUpstream)
+	if err != nil {
+		SetEmptyRespMQ(q, dnsmsg.RCodeServerFailure)
+		return
+	}
+	r.cache.Store(ckb.B, q.Resp())
+}
+
 // Prefetching q in other goroutine.
 // If a query with same key is currently prefetching, do nothing.
-func (r *Router) AsyncSingleFlightPrefetch(key []byte, q *QueryCtx, u Upstream, respIpSet *IpSet) {
+func (r *Router) AsyncSingleFlightPrefetch(key []byte, q *QueryCtx, u Upstream, rule *rule) {
 	if len(key) == 0 {
 		return
 	}
@@ -137,14 +175,14 @@ func (r *Router) AsyncSingleFlightPrefetch(key []byte, q *QueryCtx, u Upstream, 
 	go func() {
 		defer ReleaseQueryCtx(qCopy)
 		defer r.prefetchSf.Done(sk)
-		r.DoPrefetch(utils.Str2BytesUnsafe(sk), qCopy, u, respIpSet)
+		r.DoPrefetch(utils.Str2BytesUnsafe(sk), qCopy, u, rule)
 	}()
 }
 
 // Send q to u, and save response under key.
-// If respIpSet is non-nil and the response matches, the result is discarded
-// instead of being stored in cache.
-func (r *Router) DoPrefetch(key []byte, q *QueryCtx, u Upstream, respIpSet *IpSet) {
+// If the rule has resp_ip configured and the response matches, the result is
+// discarded (or forwarded via the fallback upstream if resp_ip_forward is set).
+func (r *Router) DoPrefetch(key []byte, q *QueryCtx, u Upstream, rule *rule) {
 	if len(key) == 0 {
 		return
 	}
@@ -156,7 +194,19 @@ func (r *Router) DoPrefetch(key []byte, q *QueryCtx, u Upstream, respIpSet *IpSe
 	if err != nil {
 		return
 	}
-	if respIpSet != nil && respIpSet.MatchMsg(q.Resp()) {
+	if rule != nil && rule.respIpSet != nil && rule.respIpSet.MatchMsg(q.Resp()) {
+		r.cache.Store(key, q.Resp())
+		if rule.respIpUpstream != nil {
+			err = r.forward(ctx, q, rule.respIpUpstream)
+			if err != nil {
+				return
+			}
+			fb := cacheKeyPool.Get()
+			fb.B = r.appendCacheKey(fb.B[:0], q, rule.cfg.RespIPForward)
+			r.prefetchTotal.Inc()
+			r.cache.Store(fb.B, q.Resp())
+			cacheKeyPool.Release(fb)
+		}
 		return
 	}
 	r.prefetchTotal.Inc()

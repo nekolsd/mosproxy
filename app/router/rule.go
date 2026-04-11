@@ -9,11 +9,12 @@ import (
 )
 
 type rule struct {
-	cfg       RuleConfig
-	domainSet *DomainSet              // maybe nil
-	clientIp  *netlist.List[struct{}] // maybe nil
-	upstream  Upstream                // maybe nil
-	respIpSet *IpSet                  // maybe nil
+	cfg             RuleConfig
+	domainSet       *DomainSet              // maybe nil
+	clientIp        *netlist.List[struct{}] // maybe nil
+	upstream        Upstream                // maybe nil
+	respIpSet       *IpSet                  // maybe nil
+	respIpUpstream  Upstream                // maybe nil, fallback upstream when resp_ip matches
 }
 
 func (r *Router) loadRule(cfg RuleConfig) (*rule, error) {
@@ -48,6 +49,23 @@ func (r *Router) loadRule(cfg RuleConfig) (*rule, error) {
 			return nil, fmt.Errorf("cannot find ip set tag [%s]", cfg.RespIP)
 		}
 		ru.respIpSet = ipSet
+	}
+
+	if len(cfg.RespIPForward) > 0 {
+		if ru.respIpSet == nil {
+			return nil, fmt.Errorf("resp_ip_forward requires resp_ip to be set")
+		}
+		uw := r.upstreams[cfg.RespIPForward]
+		if uw != nil {
+			ru.respIpUpstream = uw
+		} else {
+			lb := r.loadBalancers[cfg.RespIPForward]
+			if lb != nil {
+				ru.respIpUpstream = lb
+			} else {
+				return nil, fmt.Errorf("unknown resp_ip_forward target [%s]", cfg.RespIPForward)
+			}
+		}
 	}
 
 	if len(cfg.ClientIP) > 0 {
