@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 
+	"github.com/IrineSistiana/mosproxy/internal/pool"
 	"github.com/IrineSistiana/mosproxy/pkg/dnsmsg"
 	"golang.org/x/exp/constraints"
 )
@@ -24,6 +25,18 @@ func newEDNS0(udpSize uint16) *dnsmsg.RawResource {
 	opt.Class = dnsmsg.Class(udpSize)
 	opt.Type = dnsmsg.TypeOPT
 	return opt
+}
+
+func stripECSFromMsg(m *dnsmsg.Msg) {
+	for _, r := range m.Additionals {
+		if rr, ok := r.(*dnsmsg.RawResource); ok && rr.Type == dnsmsg.TypeOPT {
+			if rr.Data != nil {
+				pool.ReleaseBuf(rr.Data)
+				rr.Data = nil
+			}
+			return
+		}
+	}
 }
 
 func ctxDone(ctx context.Context) bool {

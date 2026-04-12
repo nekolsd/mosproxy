@@ -216,7 +216,11 @@ func (r *Router) DoPrefetch(key []byte, q *QueryCtx, u Upstream, rule *rule) {
 // forward query to upstream and set the response.
 // Will remove edns0 from resp.
 func (r *Router) forward(ctx context.Context, q *QueryCtx, upstream Upstream) error {
-	m := r.MakeQueryMsg(q)
+	noECS := false
+	if uw, ok := upstream.(*UpstreamWrapper); ok {
+		noECS = uw.noECS
+	}
+	m := r.makeQueryMsg(q, noECS)
 	defer dnsmsg.ReleaseMsg(m)
 
 	err := upstream.Exchange(ctx, q, m)
@@ -229,17 +233,18 @@ func (r *Router) forward(ctx context.Context, q *QueryCtx, upstream Upstream) er
 	return nil
 }
 
-// Make a dns msg from q, according to r's settings.
-func (r *Router) MakeQueryMsg(q *QueryCtx) *dnsmsg.Msg {
+func (r *Router) makeQueryMsg(q *QueryCtx, noECS bool) *dnsmsg.Msg {
 	m := dnsmsg.NewMsg()
 	m.Header.RecursionDesired = true
 	m.Questions = append(m.Questions, q.Question.Copy())
 
 	opt := newEDNS0(udpSize)
-	if ecs := q.ECS2Upstream; ecs.IsValid() {
-		addr := ecs.Addr()
-		if !addr.IsPrivate() && addr.IsGlobalUnicast() {
-			opt.Data = makeEdns0ClientSubnetReqOpt(ecs)
+	if !noECS {
+		if ecs := q.ECS2Upstream; ecs.IsValid() {
+			addr := ecs.Addr()
+			if !addr.IsPrivate() && addr.IsGlobalUnicast() {
+				opt.Data = makeEdns0ClientSubnetReqOpt(ecs)
+			}
 		}
 	}
 	m.Additionals = append(m.Additionals, opt)

@@ -52,7 +52,7 @@ func (r *Router) initUpstream(cfg *UpstreamConfig) error {
 		return fmt.Errorf("failed to init upstream. %w", err)
 	}
 
-	w := r.wrapUpstream(cfg.Tag, u, logger, cfg.HealthCheck)
+	w := r.wrapUpstream(cfg.Tag, u, logger, cfg.HealthCheck, cfg.NoECS)
 	if err := w.RegisterMetricsTo(r.metricsReg); err != nil {
 		return fmt.Errorf("failed to register metrics, %w", err)
 	}
@@ -70,6 +70,7 @@ type Upstream interface {
 type UpstreamWrapper struct {
 	r      *Router
 	tag    string
+	noECS  bool
 	u      upstream.Upstream
 	logger *zerolog.Logger
 	ctx    context.Context
@@ -96,12 +97,13 @@ type UpstreamWrapper struct {
 	responseLatency prometheus.Histogram
 }
 
-func (r *Router) wrapUpstream(tag string, u upstream.Upstream, logger *zerolog.Logger, hcCfg HealthCheckConfig) *UpstreamWrapper {
+func (r *Router) wrapUpstream(tag string, u upstream.Upstream, logger *zerolog.Logger, hcCfg HealthCheckConfig, noECS bool) *UpstreamWrapper {
 	ctx, cancel := context.WithCancel(r.ctx)
 	cb := map[string]string{"upstream": tag}
 	uw := &UpstreamWrapper{
 		r:      r,
 		tag:    tag,
+		noECS:  noECS,
 		u:      u,
 		logger: logger,
 		ctx:    ctx,

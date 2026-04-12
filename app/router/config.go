@@ -86,6 +86,7 @@ type UpstreamConfig struct {
 	Tag         string            `yaml:"tag"`
 	Addr        string            `yaml:"addr"`
 	DialAddr    string            `yaml:"dial_addr"`
+	NoECS       bool              `yaml:"no_ecs"`
 	Tls         TlsConfig         `yaml:"tls"`
 	Socket      SocketConfig      `yaml:"socket"`
 	HealthCheck HealthCheckConfig `yaml:"health_check"`

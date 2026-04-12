@@ -138,6 +138,9 @@ func (lb *LoadBalancer) Exchange(ctx context.Context, q *QueryCtx, m *dnsmsg.Msg
 	if b == nil {
 		return errors.New("no backend available")
 	}
+	if b.u.noECS {
+		stripECSFromMsg(m)
+	}
 	return b.u.Exchange(ctx, q, m)
 }
 
