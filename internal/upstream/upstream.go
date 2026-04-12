@@ -75,6 +75,10 @@ type Opt struct {
 	// Set the Control field in net.ListenConfig / net.Dialer when creating
 	// upstream connections.
 	Control func(network, address string, c syscall.RawConn) error
+
+	// Bootstrap is an upstream used to resolve domain names in the addr field.
+	// If nil, the system resolver is used.
+	Bootstrap transport.Transport
 }
 
 // NewUpstream creates a upstream.
@@ -117,6 +121,11 @@ func NewUpstream(addr string, opt Opt) (_ Upstream, err error) {
 		Control: opt.Control,
 	}
 
+	var bsResolver *bootstrapResolver
+	if opt.Bootstrap != nil {
+		bsResolver = newBootstrapResolver(opt.Bootstrap)
+	}
+
 	closeIfFuncErr := func(c io.Closer) {
 		if err != nil {
 			c.Close()
@@ -127,7 +136,11 @@ func NewUpstream(addr string, opt Opt) (_ Upstream, err error) {
 	case "", "udp":
 		dialAddr := getDialAddr(urlAddrHost, opt.DialAddr, "53")
 		dialUdp := func(ctx context.Context) (net.Conn, error) {
-			return dialer.DialContext(ctx, "udp", dialAddr)
+			a, err := resolveDialAddr(ctx, bsResolver, dialAddr)
+			if err != nil {
+				return nil, err
+			}
+			return dialer.DialContext(ctx, "udp", a)
 		}
 		ut := transport.NewPipelineTransport(transport.PipelineOpts{
 			DialContext:        dialUdp,
@@ -139,7 +152,11 @@ func NewUpstream(addr string, opt Opt) (_ Upstream, err error) {
 		})
 
 		dialTcp := func(ctx context.Context) (net.Conn, error) {
-			return dialer.DialContext(ctx, "tcp", dialAddr)
+			a, err := resolveDialAddr(ctx, bsResolver, dialAddr)
+			if err != nil {
+				return nil, err
+			}
+			return dialer.DialContext(ctx, "tcp", a)
 		}
 		return &udpWithFallback{
 			u: ut,
@@ -156,7 +173,11 @@ func NewUpstream(addr string, opt Opt) (_ Upstream, err error) {
 		}
 		dialAddr := getDialAddr(urlAddrHost, opt.DialAddr, "53")
 		dialTCP := func(ctx context.Context) (net.Conn, error) {
-			return dialer.DialContext(ctx, dialNetworkTcpOrUnix(dialAddr), dialAddr)
+			a, err := resolveDialAddr(ctx, bsResolver, dialAddr)
+			if err != nil {
+				return nil, err
+			}
+			return dialer.DialContext(ctx, dialNetworkTcpOrUnix(a), a)
 		}
 		if opt.EnablePipeline {
 			return transport.NewPipelineTransport(transport.PipelineOpts{
@@ -189,7 +210,11 @@ func NewUpstream(addr string, opt Opt) (_ Upstream, err error) {
 
 		dialAddr := getDialAddr(urlAddrHost, opt.DialAddr, "853")
 		dialTLS := func(ctx context.Context) (net.Conn, error) {
-			conn, err := dialer.DialContext(ctx, dialNetworkTcpOrUnix(dialAddr), dialAddr)
+			a, err := resolveDialAddr(ctx, bsResolver, dialAddr)
+			if err != nil {
+				return nil, err
+			}
+			conn, err := dialer.DialContext(ctx, dialNetworkTcpOrUnix(a), a)
 			if err != nil {
 				return nil, err
 			}
@@ -254,7 +279,11 @@ func NewUpstream(addr string, opt Opt) (_ Upstream, err error) {
 				TLSClientConfig: opt.TLSConfig,
 				QUICConfig:      quicConfig,
 				Dial: func(ctx context.Context, _ string, tlsCfg *tls.Config, cfg *quic.Config) (*quic.Conn, error) {
-					ua, err := net.ResolveUDPAddr("udp", dialAddr)
+					a, err := resolveDialAddr(ctx, bsResolver, dialAddr)
+					if err != nil {
+						return nil, err
+					}
+					ua, err := net.ResolveUDPAddr("udp", a)
 					if err != nil {
 						return nil, err
 					}
@@ -265,7 +294,11 @@ func NewUpstream(addr string, opt Opt) (_ Upstream, err error) {
 		} else {
 			t1 := &http.Transport{
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return dialer.DialContext(ctx, dialNetworkTcpOrUnix(dialAddr), dialAddr)
+					a, err := resolveDialAddr(ctx, bsResolver, dialAddr)
+					if err != nil {
+						return nil, err
+					}
+					return dialer.DialContext(ctx, dialNetworkTcpOrUnix(a), a)
 				},
 				TLSClientConfig:     opt.TLSConfig,
 				TLSHandshakeTimeout: tlsHandshakeTimeout,
@@ -332,7 +365,11 @@ func NewUpstream(addr string, opt Opt) (_ Upstream, err error) {
 		defer closeIfFuncErr(t)
 
 		dialQuicConn := func(ctx context.Context) (*quic.Conn, error) {
-			ua, err := net.ResolveUDPAddr("udp", dialAddr)
+			a, err := resolveDialAddr(ctx, bsResolver, dialAddr)
+			if err != nil {
+				return nil, err
+			}
+			ua, err := net.ResolveUDPAddr("udp", a)
 			if err != nil {
 				return nil, err
 			}

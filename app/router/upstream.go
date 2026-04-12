@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,6 +43,24 @@ func (r *Router) initUpstream(cfg *UpstreamConfig) error {
 		Logger:    logger,
 		TLSConfig: tlsConfig,
 	}
+
+	if len(cfg.Bootstrap) > 0 {
+		bw := r.upstreams[cfg.Bootstrap]
+		if bw == nil {
+			return fmt.Errorf("bootstrap upstream [%s] not found (must be defined before this upstream)", cfg.Bootstrap)
+		}
+		if upstreamAddrNeedsDNS(bw.addrCfg) {
+			return fmt.Errorf("bootstrap upstream [%s] address must be an IP or have dial_addr configured", cfg.Bootstrap)
+		}
+		if len(cfg.DialAddr) > 0 {
+			return fmt.Errorf("upstream [%s] cannot have both bootstrap and dial_addr configured", cfg.Tag)
+		}
+		if !upstreamAddrNeedsDNS(UpstreamAddrCfg{Addr: cfg.Addr}) {
+			return fmt.Errorf("upstream [%s] address is already an IP, bootstrap is unnecessary", cfg.Tag)
+		}
+		opt.Bootstrap = bw.u
+	}
+
 	if socketCtlOk {
 		controlOpts := cfg.Socket
 		controlOpts._TCP_USER_TIMEOUT = 5000 // 5s
@@ -52,7 +74,7 @@ func (r *Router) initUpstream(cfg *UpstreamConfig) error {
 		return fmt.Errorf("failed to init upstream. %w", err)
 	}
 
-	w := r.wrapUpstream(cfg.Tag, u, logger, cfg.HealthCheck, cfg.NoECS)
+	w := r.wrapUpstream(cfg.Tag, u, logger, cfg.HealthCheck, cfg.NoECS, UpstreamAddrCfg{Addr: cfg.Addr, DialAddr: cfg.DialAddr})
 	if err := w.RegisterMetricsTo(r.metricsReg); err != nil {
 		return fmt.Errorf("failed to register metrics, %w", err)
 	}
@@ -68,11 +90,12 @@ type Upstream interface {
 
 // Wrapper for upstream.Upstream, with tag info and metrics.
 type UpstreamWrapper struct {
-	r      *Router
-	tag    string
-	noECS  bool
-	u      upstream.Upstream
-	logger *zerolog.Logger
+	r       *Router
+	tag     string
+	noECS   bool
+	addrCfg UpstreamAddrCfg
+	u       upstream.Upstream
+	logger  *zerolog.Logger
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -97,17 +120,18 @@ type UpstreamWrapper struct {
 	responseLatency prometheus.Histogram
 }
 
-func (r *Router) wrapUpstream(tag string, u upstream.Upstream, logger *zerolog.Logger, hcCfg HealthCheckConfig, noECS bool) *UpstreamWrapper {
+func (r *Router) wrapUpstream(tag string, u upstream.Upstream, logger *zerolog.Logger, hcCfg HealthCheckConfig, noECS bool, addrCfg UpstreamAddrCfg) *UpstreamWrapper {
 	ctx, cancel := context.WithCancel(r.ctx)
 	cb := map[string]string{"upstream": tag}
 	uw := &UpstreamWrapper{
-		r:      r,
-		tag:    tag,
-		noECS:  noECS,
-		u:      u,
-		logger: logger,
-		ctx:    ctx,
-		cancel: cancel,
+		r:       r,
+		tag:     tag,
+		noECS:   noECS,
+		addrCfg: addrCfg,
+		u:       u,
+		logger:  logger,
+		ctx:     ctx,
+		cancel:  cancel,
 
 		maxFails:       hcCfg.MaxFails,
 		hcPingInterval: time.Duration(defaultIfELZero(hcCfg.PingInterval, 120)) * time.Second,
@@ -364,4 +388,38 @@ func (b *UpstreamWrapper) hcRebuildLbsIdx() {
 	for lb := range b.lbs {
 		lb.buildIdx()
 	}
+}
+
+type UpstreamAddrCfg struct {
+	Addr     string
+	DialAddr string
+}
+
+// upstreamAddrNeedsDNS reports whether the upstream address requires DNS
+// resolution to connect (i.e. its host is a domain name and no dial_addr is set).
+func upstreamAddrNeedsDNS(cfg UpstreamAddrCfg) bool {
+	if len(cfg.DialAddr) > 0 {
+		return hostNeedsDNS(cfg.DialAddr)
+	}
+	addr := cfg.Addr
+	if !strings.Contains(addr, "://") {
+		addr = "udp://" + addr
+	}
+	u, err := url.Parse(addr)
+	if err != nil {
+		return true
+	}
+	return hostNeedsDNS(u.Hostname())
+}
+
+func hostNeedsDNS(s string) bool {
+	if strings.HasPrefix(s, "@") {
+		return false
+	}
+	host, _, err := net.SplitHostPort(s)
+	if err != nil {
+		host = s
+	}
+	_, err = netip.ParseAddr(host)
+	return err != nil
 }

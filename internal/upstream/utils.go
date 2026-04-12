@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"context"
 	"net"
 	"strings"
 )
@@ -47,6 +48,15 @@ func trySplitHostPort(s string) (string, string) {
 		return host, port
 	}
 	return s, ""
+}
+
+// resolveDialAddr resolves the host in addr using the bootstrap resolver if
+// available. If r is nil or addr is already an IP, it returns addr unchanged.
+func resolveDialAddr(ctx context.Context, r *bootstrapResolver, addr string) (string, error) {
+	if r == nil {
+		return addr, nil
+	}
+	return r.resolveDialAddr(ctx, addr)
 }
 
 func tryTrimIpv6Brackets(s string) string {
