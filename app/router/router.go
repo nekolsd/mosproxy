@@ -64,6 +64,16 @@ func newRouterCmd() *cobra.Command {
 			}
 			logger.Info().Str("file", cfgPath).Msg("config file loaded")
 
+			if len(cfg.Log.File) > 0 {
+				f, err := os.OpenFile(cfg.Log.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+				if err != nil {
+					logger.Fatal().Err(err).Str("file", cfg.Log.File).Msg("failed to open log file")
+				}
+				defer f.Close()
+				mlog.SetOutput(mlog.Lock(f))
+				logger.Info().Str("file", cfg.Log.File).Msg("log output switched to file")
+			}
+
 			r, err := Run(cfg)
 			if err != nil {
 				logger.Fatal().Err(err).Msg("failed to start router")

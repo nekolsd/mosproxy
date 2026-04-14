@@ -43,6 +43,16 @@ func initLogger() zerolog.Logger {
 	return l
 }
 
+func SetOutput(w io.Writer) {
+	cw := zerolog.ConsoleWriter{Out: w, NoColor: true}
+	l = zerolog.New(cw).With().Timestamp().Logger()
+	log.SetOutput(WriteToLogger(&l, "redirected std log", "data"))
+}
+
+func Lock(w io.Writer) io.Writer {
+	return lock(w)
+}
+
 func Nop() *zerolog.Logger {
 	return &nop
 }

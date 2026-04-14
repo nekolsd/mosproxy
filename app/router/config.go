@@ -136,8 +136,9 @@ type RuleConfig struct {
 type AddonsConfig struct{}
 
 type LogConfig struct {
-	Queries   bool `yaml:"queries"`
-	TraceMsgs bool `yaml:"trace_msgs"`
+	File      string `yaml:"file"`
+	Queries   bool   `yaml:"queries"`
+	TraceMsgs bool   `yaml:"trace_msgs"`
 }
 
 type CacheConfig struct {
