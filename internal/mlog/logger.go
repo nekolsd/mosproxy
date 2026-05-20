@@ -2,13 +2,25 @@ package mlog
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
+)
+
+const (
+	LogTypeField  = "log_type"
+	LogTypeQuery  = "query"
+	LogTypeDNSMsg = "dns_msg"
+	LogTypeLog    = "log"
+
+	consoleTimeFormat = "[2006-01-02 15:04:05 UTC-07]"
 )
 
 var (
@@ -27,7 +39,7 @@ func initLogger() zerolog.Logger {
 	if ok, _ := strconv.ParseBool(os.Getenv("MOSPROXY_JSONLOGGER")); ok {
 		w = lock(os.Stderr)
 	} else {
-		w = zerolog.NewConsoleWriter()
+		w = newConsoleWriter(os.Stdout, false)
 	}
 
 	l := zerolog.New(w).With().Timestamp().Logger()
@@ -44,9 +56,56 @@ func initLogger() zerolog.Logger {
 }
 
 func SetOutput(w io.Writer) {
-	cw := zerolog.ConsoleWriter{Out: w, NoColor: true}
+	cw := newConsoleWriter(w, true)
 	l = zerolog.New(cw).With().Timestamp().Logger()
 	log.SetOutput(WriteToLogger(&l, "redirected std log", "data"))
+}
+
+func newConsoleWriter(out io.Writer, noColor bool) zerolog.ConsoleWriter {
+	return zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) {
+		w.Out = out
+		w.NoColor = noColor
+		w.TimeFormat = consoleTimeFormat
+		w.TimeLocation = time.Local
+		w.FieldsExclude = []string{LogTypeField}
+		w.FormatPrepare = prepareConsoleEvent
+		w.FormatLevel = formatConsoleLevel
+	})
+}
+
+func prepareConsoleEvent(evt map[string]interface{}) error {
+	if _, ok := evt[zerolog.LevelFieldName]; ok {
+		return nil
+	}
+	evt[zerolog.LevelFieldName] = formatNoLevelType(evt[LogTypeField])
+	return nil
+}
+
+func formatNoLevelType(i interface{}) string {
+	switch fmt.Sprint(i) {
+	case LogTypeQuery:
+		return "QUERY"
+	case LogTypeDNSMsg:
+		return "DNSMSG"
+	case LogTypeLog:
+		return "LOG"
+	default:
+		return "LOG"
+	}
+}
+
+func formatConsoleLevel(i interface{}) string {
+	switch v := i.(type) {
+	case nil:
+		return "LOG"
+	case string:
+		if v == "" {
+			return "LOG"
+		}
+		return strings.ToUpper(v)
+	default:
+		return strings.ToUpper(fmt.Sprint(v))
+	}
 }
 
 func Lock(w io.Writer) io.Writer {
@@ -76,7 +135,7 @@ type logCatcher struct {
 
 func (w *logCatcher) Write(b []byte) (int, error) {
 	b = bytes.TrimSpace(b) // trim \n from std logger
-	w.logger.Log().Bytes(w.key, b).Msg(w.msg)
+	w.logger.Log().Str(LogTypeField, LogTypeLog).Bytes(w.key, b).Msg(w.msg)
 	return len(b), nil
 }
 

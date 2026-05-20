@@ -3,6 +3,7 @@ package router
 import (
 	"net"
 
+	"github.com/IrineSistiana/mosproxy/internal/mlog"
 	"github.com/IrineSistiana/mosproxy/internal/pool"
 	"github.com/IrineSistiana/mosproxy/pkg/dnsmsg"
 	"github.com/miekg/dns"
@@ -42,6 +43,7 @@ func (r *Router) logAccess(q *QueryCtx) {
 		return
 	}
 
+	e.Str(mlog.LogTypeField, mlog.LogTypeQuery)
 	e.Dict("query", q.LogQuery())
 	e.Dict("meta", q.LogServerMeta())
 	e.Dict("resp", q.LogResp())
@@ -53,7 +55,9 @@ func (r *Router) debugLogMsg(q *QueryCtx, m *dnsmsg.Msg, upstream, msg string) {
 	if e == nil {
 		return
 	}
+	e.Str(mlog.LogTypeField, mlog.LogTypeDNSMsg)
 	e.Dict("query", q.LogQuery())
+	e.Str("upstream", upstream)
 
 	m2, err := dnsmsg2dns(m)
 	if err != nil {
@@ -61,7 +65,6 @@ func (r *Router) debugLogMsg(q *QueryCtx, m *dnsmsg.Msg, upstream, msg string) {
 	} else {
 		e.Any("msg", m2).Msg(msg)
 	}
-	e.Str("upstream", upstream)
 }
 
 func dnsmsg2dns(m *dnsmsg.Msg) (*dns.Msg, error) {
