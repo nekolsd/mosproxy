@@ -9,17 +9,21 @@ import (
 )
 
 type rule struct {
-	cfg             RuleConfig
-	domainSet       *DomainSet              // maybe nil
-	clientIp        *netlist.List[struct{}] // maybe nil
-	upstream        Upstream                // maybe nil
-	respIpSet       *IpSet                  // maybe nil
-	respIpUpstream  Upstream                // maybe nil, fallback upstream when resp_ip matches
+	cfg            RuleConfig
+	domainSet      *DomainSet              // maybe nil
+	clientIp       *netlist.List[struct{}] // maybe nil
+	hosts          *Hosts                  // maybe nil
+	upstream       Upstream                // maybe nil
+	respIpSet      *IpSet                  // maybe nil
+	respIpUpstream Upstream                // maybe nil, fallback upstream when resp_ip matches
 }
 
 func (r *Router) loadRule(cfg RuleConfig) (*rule, error) {
 	ru := &rule{
 		cfg: cfg,
+	}
+	if len(cfg.Hosts) > 0 && len(cfg.Forward) > 0 {
+		return nil, fmt.Errorf("hosts and forward cannot be configured in the same rule")
 	}
 	if len(cfg.Domain) > 0 {
 		m := r.domainSets[cfg.Domain]
@@ -41,6 +45,14 @@ func (r *Router) loadRule(cfg RuleConfig) (*rule, error) {
 				return nil, fmt.Errorf("unknown forward target [%s]", cfg.Forward)
 			}
 		}
+	}
+
+	if len(cfg.Hosts) > 0 {
+		h := r.hosts[cfg.Hosts]
+		if h == nil {
+			return nil, fmt.Errorf("cannot find hosts tag [%s]", cfg.Hosts)
+		}
+		ru.hosts = h
 	}
 
 	if len(cfg.RespIP) > 0 {

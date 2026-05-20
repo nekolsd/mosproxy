@@ -78,6 +78,14 @@ func (r *Router) BuiltInHandler(ctx context.Context, q *QueryCtx) {
 			SetEmptyRespMQ(q, dnsmsg.RCode(rejectRCode))
 			return
 		}
+		if rule.hosts != nil {
+			resp, matched := rule.hosts.Response(q)
+			if matched {
+				q.SetRespFrom(resp, "hosts")
+				return
+			}
+			continue
+		}
 		upstream := rule.upstream
 		if upstream == nil {
 			SetEmptyRespMQ(q, dnsmsg.RCodeRefused)

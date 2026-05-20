@@ -273,6 +273,16 @@ ip_sets: # IP 地址集合。
   - tag: "" # (必需)标签，需唯一。
     files: [] # CIDR 文件(s)。多个文件的条目取并集。
 
+hosts: # 静态 hosts 表。
+  - tag: "" # (必需)标签，需唯一。
+    ttl: 300 # 返回的 A/AAAA/SOA TTL。默认 300。
+    # mosdns 风格: 域名在前，后面可以跟多个 IPv4/IPv6。
+    # 同一个域名出现在多条 entry 或多个文件中时，IP 会合并并去重。
+    entries:
+      - "github.com 140.82.112.4"
+      - "dns.google 8.8.8.8 8.8.4.4 2001:4860:4860::8888"
+    files: [] # hosts 文件(s)，格式同 entries，支持热重载。
+
 rules: # 请求转发规则
   # 多个匹配之间的关系为 AND，有一个匹配不满足，规则就会被跳过。
   # 规则按顺序匹配。如果没有规则生效，会返回 REFUSE。
@@ -288,6 +298,7 @@ rules: # 请求转发规则
       - "192.168.1.100-192.168.1.255"
     # 处理:
     reject: 0 # > 0 会用这个 rcode 拒绝请求
+    hosts: "" # hosts 的 tag。命中时直接返回 hosts 响应，未命中时继续后续规则。不能和 forward 配置在同一条 rule。
     forward: "google" # 出站的 tag。可以是 upstream，可以是 load_balancer。
     # 响应 IP 匹配。值为 ip_sets 的 tag。
     # 当上游应答的 A/AAAA 记录中任意一个 IP 落在该集合中时，视为"命中"。
@@ -447,6 +458,30 @@ rules:
 ```
 
 当 `default` 上游的响应 IP 匹配 `poisoned` 集合时，自动使用 `clean` 上游重新查询。
+
+### Hosts: 静态域名解析
+
+```yaml
+hosts:
+  - tag: "local"
+    ttl: 300
+    entries:
+      - "github.com 140.82.112.4"
+      - "dns.google 8.8.8.8 8.8.4.4 2001:4860:4860::8888"
+    files: ["hosts.txt"]
+
+upstreams:
+  - tag: "default"
+    addr: "8.8.8.8"
+
+rules:
+  - hosts: "local"
+  - forward: "default"
+```
+
+`hosts` 命中 `A` 查询时返回全部 IPv4，命中 `AAAA` 查询时返回全部 IPv6。
+如果域名命中但没有当前查询类型对应的 IP，例如只有 IPv4 但查询 `AAAA`，会返回 `NOERROR`、空 Answer 和一条 SOA，不再继续转发。
+如果域名未命中，则继续尝试下一条规则。`hosts` 和 `forward` 不能配置在同一条 rule，需要转发兜底时请写成两条 rule。
 
 ### Bootstrap DNS: 无需系统 DNS 解析上游域名
 

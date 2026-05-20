@@ -16,6 +16,7 @@ type Config struct {
 
 	DomainSets []DomainSetConfig `yaml:"domain_sets"`
 	IpSets     []IpSetConfig     `yaml:"ip_sets"`
+	Hosts      []HostsConfig     `yaml:"hosts"`
 	Rules      []RuleConfig      `yaml:"rules"`
 
 	Addons AddonsConfig `yaml:"addons"`
@@ -120,14 +121,22 @@ type IpSetConfig struct {
 	Files []string `yaml:"files"`
 }
 
+type HostsConfig struct {
+	Tag     string   `yaml:"tag"`
+	Entries []string `yaml:"entries"`
+	Files   []string `yaml:"files"`
+	TTL     int      `yaml:"ttl"`
+}
+
 type RuleConfig struct {
-	Reverse    bool     `yaml:"reverse"`
-	Domain     string   `yaml:"domain"`
-	Server     string   `yaml:"server"`
-	ServerName string   `yaml:"server_name"`
-	Path       string   `yaml:"path"`
-	ClientIP   []string `yaml:"client_ip"`
-	Reject     uint16   `yaml:"reject"`
+	Reverse       bool     `yaml:"reverse"`
+	Domain        string   `yaml:"domain"`
+	Server        string   `yaml:"server"`
+	ServerName    string   `yaml:"server_name"`
+	Path          string   `yaml:"path"`
+	ClientIP      []string `yaml:"client_ip"`
+	Reject        uint16   `yaml:"reject"`
+	Hosts         string   `yaml:"hosts"`
 	Forward       string   `yaml:"forward"`
 	RespIP        string   `yaml:"resp_ip"`
 	RespIPForward string   `yaml:"resp_ip_forward"`
@@ -166,6 +175,7 @@ func genConfigTemplate(o string) {
 		Servers:    []ServerConfig{{}},
 		Upstreams:  []UpstreamConfig{{}},
 		DomainSets: []DomainSetConfig{{}},
+		Hosts:      []HostsConfig{{}},
 		Rules:      []RuleConfig{{}},
 	}
 

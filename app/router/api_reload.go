@@ -28,6 +28,9 @@ func (r *Router) Reload() (err error) {
 	for _, l := range r.ipSets {
 		reloaders = append(reloaders, l)
 	}
+	for _, l := range r.hosts {
+		reloaders = append(reloaders, l)
+	}
 	for l := range r.middlewareReloaders {
 		reloaders = append(reloaders, l)
 	}
